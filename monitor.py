@@ -8,7 +8,7 @@ class Monitor():
     A class used to represent the monitoring process.
     '''
     
-    def __init__(self, features, risk_scores, batch_size, cumsize, rmodel, stattest):
+    def __init__(self, features, risk_scores, batch_size, cumsize, stattest, rmodel, iomodel):
         """
         Parameters
         ----------
@@ -29,17 +29,21 @@ class Monitor():
         self.cumsuze = cumsize
         self.features = features # dataset
         self.risk_scores = risk_scores # an array of risk scores <values in 0..1000>
-        self.rmodel = rmodel # PyTorch dumped model
         self.stattest = stattest # Python class with 'test' method which returns statistics and p-value
+        self.rmodel = rmodel # PyTorch dumped model OR sklearn extended model
+        self.iomodel = iomodel # Autocorrelation model
         
         # Output parameters
         self.time_steps = []
         self.reconstruction_loss = []
         self.statistics = []
         self.pvalues = []
+        self.iocorr = []
         
         # Intermediate parameters
         self.prev_risk_scores = []
+        if len(self.prev_risk_scores) > self.cumsuze:
+            self.prev_risk_scores = self.prev_risk_scores[1:]
     
     def fetch_batch(self, features, risk_scores, batch_size):
         n_batches = int(np.ceil(len(features)/batch_size))
@@ -51,7 +55,7 @@ class Monitor():
             yield features_batch, risk_score_batch
     
     def simulation(self):
-        for step, batch in enumerate(self.fetch_batch(features=self.features, 
+        for step, batch in enumerate(self.fetch_batch(features=self.features.drop(['part'], axis=1), 
                                                       risk_scores=self.risk_scores, 
                                                       batch_size=self.batch_size)):
             batch_x, batch_y = batch
@@ -65,10 +69,16 @@ class Monitor():
             self.pvalues.append(p_value)
             self.time_steps.append(step)
             
+            if len(self.reconstruction_loss) >= 100:
+                iocorr_results, p_value_corr = self.iomodel(self.reconstruction_loss[-100:], self.statistics[-100:])
+            else:
+                iocorr_results = 0
+            self.iocorr.append(iocorr_results)
+            
             self.prev_risk_scores.append(batch_y)
         
     def plot(self, type):
-        values = {'loss':self.reconstruction_loss, 'pval':self.pvalues, 'stat':self.statistics}[type]
+        values = {'loss':self.reconstruction_loss, 'pval':self.pvalues, 'stat':self.statistics, 'corr':self.iocorr}[type]
         plt.plot(self.time_steps, values, 'bo')
         plt.plot(pd.Series(values).rolling(window=50).mean(), linewidth=3)
         for vline in np.cumsum(np.array(self.features.groupby('part')['part'].count())):
