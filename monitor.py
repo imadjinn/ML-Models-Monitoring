@@ -42,8 +42,6 @@ class Monitor():
         
         # Intermediate parameters
         self.prev_risk_scores = []
-        if len(self.prev_risk_scores) > self.cumsuze:
-            self.prev_risk_scores = self.prev_risk_scores[1:]
     
     def fetch_batch(self, features, risk_scores, batch_size):
         n_batches = int(np.ceil(len(features)/batch_size))
@@ -69,13 +67,16 @@ class Monitor():
             self.pvalues.append(p_value)
             self.time_steps.append(step)
             
-            if len(self.reconstruction_loss) >= 100:
-                iocorr_results, p_value_corr = self.iomodel(self.reconstruction_loss[-100:], self.statistics[-100:])
+            if len(self.reconstruction_loss) >= self.cumsuze:
+                iocorr_results, p_value_corr = self.iomodel(self.reconstruction_loss[-self.cumsuze:], 
+                                                            self.statistics[-self.cumsuze:])
             else:
                 iocorr_results = 0
             self.iocorr.append(iocorr_results)
             
             self.prev_risk_scores.append(batch_y)
+            if len(self.prev_risk_scores) > self.cumsuze:
+                self.prev_risk_scores = self.prev_risk_scores[1:]
         
     def plot(self, type):
         values = {'loss':self.reconstruction_loss, 'pval':self.pvalues, 'stat':self.statistics, 'corr':self.iocorr}[type]
